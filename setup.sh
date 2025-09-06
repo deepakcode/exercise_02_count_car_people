@@ -34,54 +34,32 @@ fi
 # Upgrade pip/setuptools/wheel
 python -m pip install --upgrade pip setuptools wheel
 
-# If requirements.txt already exists, install from it
-if [ -f "$REQ_FILE" ]; then
+# If requirements.txt is missing, bootstrap a default one
+if [ ! -f "$REQ_FILE" ]; then
     echo "---------------------------------------"
-    echo "📖 Found $REQ_FILE — installing exact versions"
-    python -m pip install -r $REQ_FILE
-else
-    echo "---------------------------------------"
-    echo "📦 No requirements.txt found — installing fresh packages"
+    echo "⚠️  $REQ_FILE not found — creating a default one"
+    cat > $REQ_FILE <<EOL
+# Core ML stack (compatible with macOS Intel + Python 3.12)
+numpy==1.26.4
+torch==2.2.2
+torchvision==0.17.2
+transformers==4.44.2
 
-    # Function: check and install
-    check_and_install () {
-        PACKAGE=$1
-        MODULE=$2
-        EXTRA=$3
+# Image processing
+opencv-python==4.9.0.80
+pillow==10.4.0
+matplotlib==3.9.2
 
-        echo "🔍 Checking $PACKAGE ..."
-        if python -c "import $MODULE" 2>/dev/null; then
-            echo "✅ $PACKAGE already installed"
-        else
-            echo "⬇️ Installing $PACKAGE ..."
-            python -m pip install $PACKAGE $EXTRA
-        fi
-    }
-
-    # Core dependencies
-    check_and_install torch torch "--index-url https://download.pytorch.org/whl/cpu"
-    check_and_install torchvision torchvision "--index-url https://download.pytorch.org/whl/cpu"
-    check_and_install transformers transformers
-    check_and_install opencv-python cv2
-    check_and_install pandas pandas
-    check_and_install pillow PIL
-    check_and_install matplotlib matplotlib
-
-    # YOLOv5 requirements
-    echo "---------------------------------------"
-    echo "🔍 Checking YOLOv5 dependencies ..."
-    if python -c "import yolov5" 2>/dev/null; then
-        echo "✅ YOLOv5 already present"
-    else
-        echo "⬇️ Installing YOLOv5 requirements ..."
-        python -m pip install -r https://raw.githubusercontent.com/ultralytics/yolov5/master/requirements.txt
-    fi
-
-    # Freeze versions for reproducibility
-    echo "---------------------------------------"
-    echo "📌 Freezing exact versions into $REQ_FILE"
-    python -m pip freeze > $REQ_FILE
+# Data handling
+pandas==2.2.2
+EOL
+    echo "✅ Created $REQ_FILE with locked versions"
 fi
+
+# Install from requirements.txt
+echo "---------------------------------------"
+echo "📖 Installing from $REQ_FILE"
+python -m pip install -r $REQ_FILE
 
 echo "======================================="
 echo "🎉 Setup complete! Environment is ready"
