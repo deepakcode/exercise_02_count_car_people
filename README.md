@@ -225,8 +225,3 @@ if __name__ == '__main__':
 4. Deploy the system as a **web service** or **mobile application**.
 5. Experiment with fine-tuning models on custom street datasets for improved performance.
 
----
-
-✅ This formatted **Design Document** looks professional and ready for submission.
-
-Do you want me to also create a **PDF version** of this design doc (with clean formatting, headings, and code blocks styled) so you can directly submit or print it?
