@@ -2,6 +2,8 @@
 
 set -e
 
+REQ_FILE="requirements.txt"
+
 echo "======================================="
 echo "🚀 Setting up fresh virtual environment"
 echo "======================================="
@@ -32,41 +34,56 @@ fi
 # Upgrade pip/setuptools/wheel
 python -m pip install --upgrade pip setuptools wheel
 
-# Function: check and install
-check_and_install () {
-    PACKAGE=$1
-    MODULE=$2
-    EXTRA=$3
-
+# If requirements.txt already exists, install from it
+if [ -f "$REQ_FILE" ]; then
     echo "---------------------------------------"
-    echo "🔍 Checking $PACKAGE ..."
-    if python -c "import $MODULE" 2>/dev/null; then
-        echo "✅ $PACKAGE already installed"
-    else
-        echo "⬇️ Installing $PACKAGE ..."
-        python -m pip install $PACKAGE $EXTRA
-    fi
-}
-
-# Core dependencies
-check_and_install torch torch "--index-url https://download.pytorch.org/whl/cpu"
-check_and_install torchvision torchvision "--index-url https://download.pytorch.org/whl/cpu"
-check_and_install transformers transformers
-check_and_install opencv-python cv2
-check_and_install pandas pandas
-check_and_install pillow PIL
-check_and_install matplotlib matplotlib
-
-# YOLOv5 requirements
-echo "---------------------------------------"
-echo "🔍 Checking YOLOv5 dependencies ..."
-if python -c "import yolov5" 2>/dev/null; then
-    echo "✅ YOLOv5 already present"
+    echo "📖 Found $REQ_FILE — installing exact versions"
+    python -m pip install -r $REQ_FILE
 else
-    echo "⬇️ Installing YOLOv5 requirements ..."
-    python -m pip install -r https://raw.githubusercontent.com/ultralytics/yolov5/master/requirements.txt
+    echo "---------------------------------------"
+    echo "📦 No requirements.txt found — installing fresh packages"
+
+    # Function: check and install
+    check_and_install () {
+        PACKAGE=$1
+        MODULE=$2
+        EXTRA=$3
+
+        echo "🔍 Checking $PACKAGE ..."
+        if python -c "import $MODULE" 2>/dev/null; then
+            echo "✅ $PACKAGE already installed"
+        else
+            echo "⬇️ Installing $PACKAGE ..."
+            python -m pip install $PACKAGE $EXTRA
+        fi
+    }
+
+    # Core dependencies
+    check_and_install torch torch "--index-url https://download.pytorch.org/whl/cpu"
+    check_and_install torchvision torchvision "--index-url https://download.pytorch.org/whl/cpu"
+    check_and_install transformers transformers
+    check_and_install opencv-python cv2
+    check_and_install pandas pandas
+    check_and_install pillow PIL
+    check_and_install matplotlib matplotlib
+
+    # YOLOv5 requirements
+    echo "---------------------------------------"
+    echo "🔍 Checking YOLOv5 dependencies ..."
+    if python -c "import yolov5" 2>/dev/null; then
+        echo "✅ YOLOv5 already present"
+    else
+        echo "⬇️ Installing YOLOv5 requirements ..."
+        python -m pip install -r https://raw.githubusercontent.com/ultralytics/yolov5/master/requirements.txt
+    fi
+
+    # Freeze versions for reproducibility
+    echo "---------------------------------------"
+    echo "📌 Freezing exact versions into $REQ_FILE"
+    python -m pip freeze > $REQ_FILE
 fi
 
 echo "======================================="
 echo "🎉 Setup complete! Environment is ready"
+echo "📖 Dependencies locked in $REQ_FILE"
 echo "======================================="
