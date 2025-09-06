@@ -1,0 +1,16 @@
+# Ignore virtual environments
+./my_ml_env/
+
+__pycache__/
+*.pyc
+.DS_Store
+
+# Ignore Python virtual environments
+my_ml_env/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore macOS junk files
+.DS_Storemy_ml_env/

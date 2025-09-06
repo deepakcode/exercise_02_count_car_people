@@ -1,4 +1,9 @@
+```bash
+./setup.sh
+source .venv/bin/activate
+python detect_count.py path/to/street_image.jpg
 
+```
 
 # **Design Document: Street Image Car and People Counting System**
 
