@@ -1,5 +1,4 @@
 #!/bin/bash
-
 set -e
 
 REQ_FILE="requirements.txt"
@@ -32,34 +31,44 @@ if [[ "$PY_VER" != *"3.12"* ]]; then
 fi
 
 # Upgrade pip/setuptools/wheel
+echo "---------------------------------------"
+echo "⚡ Upgrading pip, setuptools, wheel"
 python -m pip install --upgrade pip setuptools wheel
 
-# If requirements.txt is missing, bootstrap a default one
-if [ ! -f "$REQ_FILE" ]; then
-    echo "---------------------------------------"
-    echo "⚠️  $REQ_FILE not found — creating a default one"
-    cat > $REQ_FILE <<EOL
-# Core ML stack (compatible with macOS Intel + Python 3.12)
-numpy==1.26.4
-torch==2.2.2
-torchvision==0.17.2
-transformers==4.44.2
-
-# Image processing
-opencv-python==4.9.0.80
-pillow==10.4.0
-matplotlib==3.9.2
-
-# Data handling
-pandas==2.2.2
-EOL
-    echo "✅ Created $REQ_FILE with locked versions"
-fi
-
-# Install from requirements.txt
+# Install numpy<2 first
 echo "---------------------------------------"
-echo "📖 Installing from $REQ_FILE"
-python -m pip install -r $REQ_FILE
+echo "📦 Installing numpy<2"
+pip install --force-reinstall "numpy<2"
+
+# Install OpenCV compatible with numpy<2
+echo "---------------------------------------"
+echo "📦 Installing OpenCV 4.9.0.80"
+pip install --force-reinstall opencv-python==4.9.0.80
+
+# Install PyTorch CPU version compatible with numpy<2
+echo "---------------------------------------"
+echo "📦 Installing PyTorch 2.2.2 + torchvision 0.17.2 (CPU)"
+pip install torch==2.2.2 torchvision==0.17.2 --index-url https://download.pytorch.org/whl/cpu
+
+# Install YOLO ultralytics
+echo "---------------------------------------"
+echo "📦 Installing ultralytics 8.0.171"
+pip install ultralytics==8.0.171
+
+# Install timm (DETR dependency)
+echo "---------------------------------------"
+echo "📦 Installing timm"
+pip install timm
+
+# Install remaining packages but force numpy<2 to prevent upgrade
+echo "---------------------------------------"
+echo "📦 Installing transformers, pandas, matplotlib"
+pip install --force-reinstall transformers==4.44.2 pandas==2.2.2 matplotlib==3.9.2 "numpy<2"
+
+# Freeze exact versions into requirements.txt
+echo "---------------------------------------"
+echo "📌 Freezing working versions into $REQ_FILE"
+pip freeze > $REQ_FILE
 
 echo "======================================="
 echo "🎉 Setup complete! Environment is ready"
