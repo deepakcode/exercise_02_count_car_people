@@ -85,50 +85,118 @@ The system architecture is designed as a **multi-stage pipeline**:
 ### **5.2 Code Implementation**
 
 ```python
-# Import libraries
+# detect_count.py
+import sys
 import cv2
 import torch
-from transformers import DetrForObjectDetection, DetrProcessor
+import numpy as np
+from PIL import Image
+from torchvision.ops import nms
+from transformers import DetrImageProcessor, DetrForObjectDetection
+from ultralytics import YOLO
 
-# Load pre-trained models
-cnn_model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
-vit_model = DetrForObjectDetection.from_pretrained("facebook/detr-resnet-50")
-processor = DetrProcessor.from_pretrained("facebook/detr-resnet-50")
+def boxes_from_yolo(results, class_name):
+    boxes = []
+    scores = []
+    for r in results:  # each r is a Results object
+        for box in r.boxes:
+            cls_name = r.names[int(box.cls[0])]
+            conf = float(box.conf[0])
+            xyxy = box.xyxy[0].tolist()  # [x1,y1,x2,y2]
+            if cls_name == class_name:
+                boxes.append(xyxy)
+                scores.append(conf)
+    return boxes, scores
 
-# Load input image
-image = cv2.imread("street_image.jpg")
+def boxes_from_detr(processor, model, image_rgb, threshold=0.5):
+    inputs = processor(images=image_rgb, return_tensors="pt")
+    outputs = model(**inputs)
+    target_sizes = torch.tensor([image_rgb.shape[:2]])  # (H, W)
+    results = processor.post_process_object_detection(outputs, target_sizes=target_sizes, threshold=threshold)[0]
 
-# CNN detection
-cnn_results = cnn_model(image)
-car_boxes_cnn = cnn_results.xyxy[0][cnn_results.pandas().xyxy[0]['name'] == 'car'].tolist()
-person_boxes_cnn = cnn_results.xyxy[0][cnn_results.pandas().xyxy[0]['name'] == 'person'].tolist()
+    boxes_by_label = {}
+    for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
+        label_text = model.config.id2label[int(label.item())]
+        box_list = [float(box[0]), float(box[1]), float(box[2]), float(box[3])]
+        boxes_by_label.setdefault(label_text, ([], []))
+        boxes_by_label[label_text][0].append(box_list)
+        boxes_by_label[label_text][1].append(float(score.item()))
+    return boxes_by_label
 
-# ViT detection
-inputs = processor(images=image, return_tensors="pt")
-outputs = vit_model(**inputs)
-car_boxes_vit = outputs.pred_boxes[0][outputs.logits[0].argmax(-1) == 3].tolist()
-person_boxes_vit = outputs.pred_boxes[0][outputs.logits[0].argmax(-1) == 91].tolist()
+def apply_nms(boxes, scores, iou_thresh=0.5):
+    if len(boxes) == 0:
+        return [], []
+    boxes_t = torch.tensor(boxes, dtype=torch.float32)
+    scores_t = torch.tensor(scores, dtype=torch.float32)
+    keep = nms(boxes_t, scores_t, iou_thresh)
+    return boxes_t[keep].tolist(), scores_t[keep].tolist()
 
-# Combine results
-all_car_boxes = car_boxes_cnn + car_boxes_vit
-all_person_boxes = person_boxes_cnn + person_boxes_vit
+def draw_boxes(img_bgr, boxes, color=(0, 255, 0), label_text=''):
+    for b in boxes:
+        x1, y1, x2, y2 = map(int, b)
+        cv2.rectangle(img_bgr, (x1, y1), (x2, y2), color, 2)
+        if label_text:
+            cv2.putText(img_bgr, label_text, (x1, max(15, y1 - 6)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
-# TODO: Apply Non-Maximum Suppression (NMS) to refine results
+def main(image_path):
+    # Load YOLOv5 model
+    print("Loading YOLOv5 (this may download weights if not present)...")
+    cnn_model = YOLO("yolov5s.pt")
 
-# Draw bounding boxes
-for box in all_car_boxes:
-    cv2.rectangle(image, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0, 255, 0), 2)
-for box in all_person_boxes:
-    cv2.rectangle(image, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (255, 0, 0), 2)
+    # Load DETR processor & model
+    print("Loading DETR processor & model (this will download weights)...")
+    processor = DetrImageProcessor.from_pretrained("facebook/detr-resnet-50")
+    vit_model = DetrForObjectDetection.from_pretrained("facebook/detr-resnet-50")
 
-# Display image with counts
-cv2.imshow("Street Scene with Counts", image)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+    # Load image
+    img_bgr = cv2.imread(image_path)
+    if img_bgr is None:
+        raise FileNotFoundError(f"Could not read image {image_path}")
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
 
-# Print counts
-print(f"Number of cars: {len(all_car_boxes)}")
-print(f"Number of people: {len(all_person_boxes)}")
+    # YOLO detections
+    yolo_results = cnn_model(img_bgr)  # can pass path or numpy BGR image
+    car_boxes_yolo, car_scores_yolo = boxes_from_yolo(yolo_results, 'car')
+    person_boxes_yolo, person_scores_yolo = boxes_from_yolo(yolo_results, 'person')
+
+    # DETR detections
+    boxes_by_label = boxes_from_detr(processor, vit_model, img_rgb, threshold=0.5)
+    car_boxes_detr, car_scores_detr = boxes_by_label.get('car', ([], []))
+    person_boxes_detr, person_scores_detr = boxes_by_label.get('person', ([], []))
+
+    # Combine per class and apply NMS
+    all_car_boxes = car_boxes_yolo + car_boxes_detr
+    all_car_scores = car_scores_yolo + car_scores_detr
+    keep_cars, keep_cars_scores = apply_nms(all_car_boxes, all_car_scores, iou_thresh=0.45)
+
+    all_person_boxes = person_boxes_yolo + person_boxes_detr
+    all_person_scores = person_scores_yolo + person_scores_detr
+    keep_persons, keep_persons_scores = apply_nms(all_person_boxes, all_person_scores, iou_thresh=0.45)
+
+    # Draw and save
+    draw_boxes(img_bgr, keep_cars, color=(0, 255, 0), label_text='car')
+    draw_boxes(img_bgr, keep_persons, color=(255, 0, 0), label_text='person')
+
+    out_path = 'out.jpg'
+    cv2.imwrite(out_path, img_bgr)
+    print(f"Saved result to {out_path}")
+    print(f"Number of cars: {len(keep_cars)}")
+    print(f"Number of people: {len(keep_persons)}")
+
+    # Try to show (may fail in headless environments)
+    try:
+        cv2.imshow("Result", img_bgr)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+    except Exception:
+        print("cv2.imshow failed (maybe headless). Open the output image manually:", out_path)
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print("Usage: python detect_count.py path/to/image.jpg")
+        sys.exit(1)
+    main(sys.argv[1])
 ```
 
 ---
