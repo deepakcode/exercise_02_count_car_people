@@ -1,3 +1,8 @@
+![out.jpg](out.jpg)
+
+![output car and human count .png](output_file/output%20car%20and%20human%20count%20.png)
+
+
 ```bash
 ./setup.sh
 source .venv/bin/activate
